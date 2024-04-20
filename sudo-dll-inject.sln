@@ -4,9 +4,6 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 17.9.34728.123
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "sudo-dll-injector", "sudo-dll-inject.vcxproj", "{26AB1D44-69FF-4A78-B9BD-2AC95CCF2FD6}"
-	ProjectSection(ProjectDependencies) = postProject
-		{625DB779-CB0C-494E-B39B-9D46AC8025CE} = {625DB779-CB0C-494E-B39B-9D46AC8025CE}
-	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "sudo-dll-payload", "sudo-dll-payload\sudo-dll-payload.vcxproj", "{625DB779-CB0C-494E-B39B-9D46AC8025CE}"
 EndProject
