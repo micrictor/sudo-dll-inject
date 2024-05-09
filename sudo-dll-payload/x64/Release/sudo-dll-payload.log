@@ -1,13 +1,6 @@
-﻿  main.cpp
-C:\Users\Michael Torres\source\repos\micrictor\sudo-dll-inject\payload\main.cpp(6,10): warning C4200: nonstandard extension used: zero-sized array in struct/union
-  C:\Users\Michael Torres\source\repos\micrictor\sudo-dll-inject\payload\main.cpp(6,10):
-  This member will be ignored by a defaulted constructor or copy/move assignment operator
-  
-main.obj : error LNK2001: unresolved external symbol DetourTransactionCommit
-main.obj : error LNK2001: unresolved external symbol DetourUpdateThread
-main.obj : error LNK2001: unresolved external symbol DetourDetach
-main.obj : error LNK2001: unresolved external symbol DetourRestoreAfterWith
-main.obj : error LNK2001: unresolved external symbol DetourTransactionBegin
-main.obj : error LNK2001: unresolved external symbol DetourAttach
-main.obj : error LNK2001: unresolved external symbol DetourIsHelperProcess
-C:\Users\Michael Torres\source\repos\micrictor\sudo-dll-inject\x64\Release\sudo-dll-payload.dll : fatal error LNK1120: 7 unresolved externals
+﻿  Generating code
+  2 of 5 functions (40.0%) were compiled, the rest were copied from previous compilation.
+    0 functions were new in current compilation
+    0 functions had inline decision re-evaluated but remain unchanged
+  Finished generating code
+  sudo-dll-payload.vcxproj -> C:\Users\Michael Torres\source\repos\micrictor\sudo-dll-inject\x64\Release\sudo-dll-payload.dll

@@ -76,6 +76,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <IncludePath>C:\Users\Michael Torres\source\repos\micrictor\sudo-dll-inject\Detours\include;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Users\Michael Torres\source\repos\micrictor\sudo-dll-inject\Detours\lib.X64;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>

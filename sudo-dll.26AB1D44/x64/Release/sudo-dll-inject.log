@@ -1,0 +1,2 @@
+﻿LINK : warning LNK4075: ignoring '/INCREMENTAL' due to '/OPT:ICF' specification
+  sudo-dll-inject.vcxproj -> C:\Users\Michael Torres\source\repos\micrictor\sudo-dll-inject\x64\Release\sudo-dll-injector.exe
