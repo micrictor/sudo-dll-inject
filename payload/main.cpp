@@ -26,7 +26,7 @@ unsigned long long HookedServerDoElevationRequest(RPC_BINDING_HANDLE rpcHandle,
     AttachConsole(ppid);
     HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD dwLen = 0;
-    WriteConsoleA(hStdOut, "hacked\n", 7, &dwLen, NULL);
+    WriteConsoleA(hStdOut, "mtu was here!\n", 15, &dwLen, NULL);
     return 0;
     // return OriginalServerDoElevationRequest(rpcHandle, input_process_handle, pipe_handle, file_handle, run_mode, cmd, param_7, param_8, param_9, input_guid, output_process);
 }

