@@ -15,10 +15,7 @@ typedef unsigned long long(__fastcall* fnServerDoElevationRequest_t)(RPC_BINDING
     HANDLE, int, rpc_internal_struct, rpc_internal_struct, rpc_internal_struct,
     rpc_internal_struct, GUID*, HANDLE);
 
-typedef RPC_STATUS(*fnRpcServerInqCallAttributes_t)(RPC_BINDING_HANDLE, void*);
-
 fnServerDoElevationRequest_t OriginalServerDoElevationRequest = NULL;
-fnRpcServerInqCallAttributes_t OriginalRpcServerInqCallAttributes = NULL;
 
 unsigned long long HookedServerDoElevationRequest(RPC_BINDING_HANDLE rpcHandle,
     HANDLE input_process_handle, HANDLE pipe_handle, HANDLE file_handle, int run_mode,
