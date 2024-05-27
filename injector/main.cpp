@@ -70,7 +70,7 @@ static HANDLE spawn_target(char *cmd_to_run, char *path_to_payload) {
 	PROCESS_INFORMATION pi = { 0 };
 
 	si.cb = sizeof(si);
-	HRESULT createProcessResult = CreateProcessA("sudo.exe", cmd_to_run, 0, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi);
+	HRESULT createProcessResult = CreateProcessA("C:\\Windows\\System32\\sudo.exe", cmd_to_run, 0, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi);
 	if (createProcessResult == 0) {
 		printf("Creating the target failed.\n");
 		return FALSE;
