@@ -5,6 +5,7 @@
 #include <Lmcons.h>
 
 const uint64_t kServerDoElevationRequestOffset = 0x8e840;
+
 struct rpc_internal_struct {
     unsigned int length;
     unsigned int reserved;
@@ -24,11 +25,12 @@ unsigned long long HookedServerDoElevationRequest(RPC_BINDING_HANDLE rpcHandle,
     DWORD ppid = GetProcessId(input_process_handle);
     FreeConsole();
     AttachConsole(ppid);
+
     HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD dwLen = 0;
     WriteConsoleA(hStdOut, "mtu was here!\n", 15, &dwLen, NULL);
-    return 0;
-    // return OriginalServerDoElevationRequest(rpcHandle, input_process_handle, pipe_handle, file_handle, run_mode, cmd, param_7, param_8, param_9, input_guid, output_process);
+
+    return RPC_S_OK;
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD dwReason, LPVOID lpReserved) {
