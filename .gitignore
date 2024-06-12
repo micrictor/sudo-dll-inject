@@ -22,3 +22,6 @@ obj.*
 /bin.*
 *.vcxproj.FileListAbsolute.txt
 *.vcxprojAssemblyReference.cache
+
+
+!sudo.exe
