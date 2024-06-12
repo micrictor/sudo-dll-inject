@@ -4,7 +4,12 @@
 #include <psapi.h>
 #include <Lmcons.h>
 
-const uint64_t kServerDoElevationRequestOffset = 0x8e840;
+// Original version
+// const uint64_t kServerDoElevationRequestOffset = 0x8e840;
+
+// 09 JUNE VERSION
+const uint64_t kServerDoElevationRequestOffset = 0x895c0;
+
 
 struct rpc_internal_struct {
     unsigned int length;

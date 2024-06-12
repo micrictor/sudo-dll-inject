@@ -119,7 +119,7 @@ DWORD FindRunningSudo() {
 
 	for (i = 0; i < cProcesses; i++)
 	{
-		if (aProcesses[i] != 0)
+		if (aProcesses[i] != 0 && aProcesses[i] != GetCurrentProcessId())
 		{
 			HANDLE proccesHandle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, aProcesses[i]);
 			if (NULL != proccesHandle)
